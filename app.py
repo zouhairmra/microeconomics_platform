@@ -1,19 +1,17 @@
 import streamlit as st
 
-from modules.elasticity_game import run as elasticity_game
-from modules.equilibrium_game import run as equilibrium_game
-from modules.monopoly_game import run as monopoly_game
-from modules.quiz_game import run as quiz_game
-from modules.leaderboard import run as leaderboard
+import modules.elasticity_game as elasticity_game
+import modules.equilibrium_game as equilibrium_game
+import modules.monopoly_game as monopoly_game
+import modules.quiz_game as quiz_game
+import modules.leaderboard as leaderboard
 
 st.set_page_config(page_title="Microeconomics Game Platform", layout="wide")
 
 st.title("🎮 منصة ألعاب الاقتصاد الجزئي")
 
 menu = st.sidebar.selectbox(
-
     "اختر اللعبة",
-
     [
         "لعبة المرونة",
         "لعبة التوازن",
@@ -24,16 +22,16 @@ menu = st.sidebar.selectbox(
 )
 
 if menu == "لعبة المرونة":
-    elasticity_game()
+    elasticity_game.run()
 
 elif menu == "لعبة التوازن":
-    equilibrium_game()
+    equilibrium_game.run()
 
 elif menu == "لعبة الاحتكار":
-    monopoly_game()
+    monopoly_game.run()
 
 elif menu == "الاختبار":
-    quiz_game()
+    quiz_game.run()
 
 elif menu == "لوحة المتصدرين":
-    leaderboard()
+    leaderboard.run()
