@@ -1,7 +1,9 @@
 import streamlit as st
-from modules import elasticity_game, equilibrium_game, quiz_game
 
-
+import modules.elasticity_game as elasticity_game
+import modules.equilibrium_game as equilibrium_game
+import modules.monopoly_game as monopoly_game
+import modules.quiz_game as quiz_game
 st.set_page_config(page_title="Microeconomics Game Platform", layout="wide")
 
 st.title("🎮 منصة ألعاب الاقتصاد الجزئي")
