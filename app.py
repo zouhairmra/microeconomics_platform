@@ -92,3 +92,14 @@ if uploaded:
         var_res, lag = run_var(df_macro)
         st.write("Optimal Lag:", lag)
         st.write(var_res.summary())
+elif page == "AI Policy Interpreter":
+    st.subheader("AI Policy Interpreter")
+
+    user_input = st.text_area("Paste regression diagnostics or summary")
+
+    if st.button("Generate Policy Discussion"):
+        if not user_input.strip():
+            st.warning("Please provide regression output first.")
+        else:
+            interpretation = query_phi3(user_input)
+            st.write(interpretation)
