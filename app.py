@@ -1,3 +1,8 @@
+import streamlit as st
+st.set_page_config(layout="wide")
+import pandas as pd
+import numpy as np
+import statsmodels.api as sm
 import sys
 import os
 sys.path.insert(0, os.path.abspath("."))
@@ -8,8 +13,6 @@ from endogeneity import endogeneity_score, suggest_instruments
 from robustness import sensitivity
 from var_module import run_var
 from llm_engine import query_phi3
-
-
 st.set_page_config(layout="wide")
 st.title("AI-Augmented Econometric Research Laboratory")
 
