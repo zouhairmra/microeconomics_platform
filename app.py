@@ -17,7 +17,7 @@ from diagnostics import compute_vif, heteroskedasticity, serial_corr
 from endogeneity import endogeneity_score, suggest_instruments
 from robustness import sensitivity
 from var_module import run_var
- 
+ from llm_engine import query_phi3  # Poe API-based AI assistant
 
 st.title("📊 AI-Augmented Econometric Research Laboratory")
 
@@ -119,22 +119,20 @@ if uploaded:
         except Exception:
             st.info("IRF plotting not available for this VAR model.")
 
-    # ----------------------------
-    # 6️⃣ AI Policy Interpreter
-    # ----------------------------
-    elif page == "AI Policy Interpreter":
-        st.subheader("AI Policy Interpreter")
+   # ----------------------------
+# 6️⃣ AI Policy Interpreter
+# ----------------------------
+elif page == "AI Policy Interpreter":
+    st.subheader("AI Policy Interpreter")
 
-        user_input = st.text_area(
-            "Paste regression diagnostics or summary (FE/RE, Hausman, VIF, BP, DW, etc.)"
-        )
+    # Optional: use previous panel/VAR results as default input
+    default_prompt = "Paste regression diagnostics or summary (FE/RE, Hausman, VIF, BP, DW, etc.)"
+    user_input = st.text_area("Paste diagnostics or ask a question:", value=default_prompt)
 
-        if st.button("Generate Policy Discussion"):
-            if not user_input.strip():
-                st.warning("Please provide regression output first.")
-            else:
-                interpretation = query_phi3(user_input)
-                st.write(interpretation)
-
-else:
-    st.info("Upload a CSV file to begin analysis.")
+    if st.button("Generate Policy Discussion"):
+        if not user_input.strip():
+            st.warning("Please provide regression output or a question.")
+        else:
+            st.info("Generating AI interpretation…")
+            interpretation = query_phi3(user_input)
+            st.write(interpretation)
