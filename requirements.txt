@@ -3,6 +3,5 @@ pandas
 numpy
 statsmodels
 linearmodels
+scikit-learn
 scipy
-matplotlib
-requests
