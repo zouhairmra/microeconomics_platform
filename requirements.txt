@@ -9,3 +9,6 @@ scipy
 matplotlib
 requests
 openai
+PyPDF2
+python-docx
+ 
