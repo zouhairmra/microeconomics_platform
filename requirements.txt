@@ -1,7 +1,7 @@
-streamlit
-pandas
-numpy
-statsmodels
-linearmodels
-scikit-learn
-scipy
+streamlit==1.32.0
+pandas>=1.5.0
+numpy>=1.23.0
+statsmodels>=0.14.0
+linearmodels>=5.0
+scikit-learn>=1.2.0
+scipy>=1.10.0
