@@ -18,7 +18,14 @@ st.title("AI-Augmented Econometric Research Laboratory")
 
 page = st.sidebar.selectbox(
     "Select Module",
-    ["Panel Models", "Dynamic Panel", "VAR Analysis"]
+    [
+        "Panel Models",
+        "Dynamic Panel",
+        "Endogeneity & Instruments",
+        "Robustness & Sensitivity",
+        "VAR & IRF Analysis",
+        "AI Policy Interpreter"
+    ]
 )
 
 uploaded = st.file_uploader("Upload CSV Data", type="csv")
