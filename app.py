@@ -1,13 +1,10 @@
-import streamlit as st
-st.set_page_config(page_title="AI-Augmented Econometrics Lab", layout="wide")
-
-import pandas as pd
-import numpy as np
-import statsmodels.api as sm
 import sys
 import os
-
-sys.path.insert(0, os.path.abspath("."))
+sys.path.insert(0, os.path.abspath("."))  # adds root directory to Python path
+import streamlit as st
+st.set_page_config(page_title="AI-Augmented Econometrics Lab", layout="wide")
+import pandas as pd
+import numpy as np
 
 # Modules
 from panel_models import run_fe, run_re, hausman
