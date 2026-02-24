@@ -95,11 +95,14 @@ if uploaded:
 elif page == "AI Policy Interpreter":
     st.subheader("AI Policy Interpreter")
 
-    user_input = st.text_area("Paste regression diagnostics or summary")
+    user_input = st.text_area(
+        "Paste regression diagnostics or summary (FE/RE, Hausman, VIF, BP, DW, etc.)"
+    )
 
     if st.button("Generate Policy Discussion"):
         if not user_input.strip():
             st.warning("Please provide regression output first.")
         else:
             interpretation = query_phi3(user_input)
+            st.write(interpretation)
             st.write(interpretation)
