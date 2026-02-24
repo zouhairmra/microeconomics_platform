@@ -8,7 +8,6 @@ scipy>=1.10.0
 scipy
 matplotlib
 requests
-openai
 PyPDF2
 python-docx
  
