@@ -1,6 +1,6 @@
 import sys
 import os
-sys.path.insert(0, os.path.abspath("."))  # adds root directory to Python path
+sys.path.insert(0, os.path.dirname(__file__))  # ensures root folder is in Python path
 import streamlit as st
 st.set_page_config(page_title="AI-Augmented Econometrics Lab", layout="wide")
 import pandas as pd
