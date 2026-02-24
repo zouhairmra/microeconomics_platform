@@ -17,7 +17,7 @@ from diagnostics import compute_vif, heteroskedasticity, serial_corr
 from endogeneity import endogeneity_score, suggest_instruments
 from robustness import sensitivity
 from var_module import run_var
-from llm_engine import query_phi3
+ 
 
 st.title("📊 AI-Augmented Econometric Research Laboratory")
 
