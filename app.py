@@ -66,36 +66,31 @@ if page != "AI Assistant":
 
         elif page == "Dynamic Panel":
 
-    if uploaded:
-        # Normalize columns
-        df.columns = df.columns.str.strip().str.lower()
-        st.write("Columns detected in CSV:", df.columns.tolist())
+           if uploaded:
+            # Normalize columns
+            df.columns = df.columns.str.strip().str.lower()
+            st.write("Columns detected in CSV:", df.columns.tolist())
 
-        # Select entity and time columns
-        entity = st.selectbox("Entity ID", df.columns)
-        time_id = st.selectbox("Time ID", df.columns)
+            # Select entity and time columns
+            entity = st.selectbox("Entity ID", df.columns)
+            time_id = st.selectbox("Time ID", df.columns)
 
-        # Check selections
-        if entity not in df.columns or time_id not in df.columns:
+            if entity not in df.columns or time_id not in df.columns:
             st.warning(f"Selected columns not found in data: {entity}, {time_id}")
-        else:
-            df_indexed = df.copy()
+            else:
+                df_indexed = df.copy()
+                y_var = st.selectbox("Dependent Variable", df_indexed.columns)
+                x_vars = st.multiselect("Independent Variables", df_indexed.columns)
 
-            # Dependent and independent variables
-            y_var = st.selectbox("Dependent Variable", df_indexed.columns)
-            x_vars = st.multiselect("Independent Variables", df_indexed.columns)
-
-            if y_var and x_vars:
+                if y_var and x_vars:
                 try:
                     ab_res = run_arellano_bond(df_indexed, entity, time_id, y_var, x_vars)
                     st.subheader("Arellano-Bond PanelOLS Results")
                     st.text(ab_res.summary)
-
                 except KeyError as e:
                     st.error(f"Column Error: {e}")
                 except Exception as e:
                     st.error(f"Error running Arellano-Bond: {e}")
-
             else:
                 st.info("Please select dependent and independent variables.")
 
