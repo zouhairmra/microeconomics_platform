@@ -65,8 +65,42 @@ if page != "AI Assistant":
             st.write("Hausman p-value:", h_p)
 
         elif page == "Dynamic Panel":
-            ab_res = run_arellano_bond(df, entity, time_id, y_var, x_vars)
-            st.text(ab_res.summary)
+
+    if uploaded:
+        # Normalize columns
+        df.columns = df.columns.str.strip().str.lower()
+        st.write("Columns detected in CSV:", df.columns.tolist())
+
+        # Select entity and time columns
+        entity = st.selectbox("Entity ID", df.columns)
+        time_id = st.selectbox("Time ID", df.columns)
+
+        # Check selections
+        if entity not in df.columns or time_id not in df.columns:
+            st.warning(f"Selected columns not found in data: {entity}, {time_id}")
+        else:
+            df_indexed = df.copy()
+
+            # Dependent and independent variables
+            y_var = st.selectbox("Dependent Variable", df_indexed.columns)
+            x_vars = st.multiselect("Independent Variables", df_indexed.columns)
+
+            if y_var and x_vars:
+                try:
+                    ab_res = run_arellano_bond(df_indexed, entity, time_id, y_var, x_vars)
+                    st.subheader("Arellano-Bond PanelOLS Results")
+                    st.text(ab_res.summary)
+
+                except KeyError as e:
+                    st.error(f"Column Error: {e}")
+                except Exception as e:
+                    st.error(f"Error running Arellano-Bond: {e}")
+
+            else:
+                st.info("Please select dependent and independent variables.")
+
+    else:
+        st.info("Upload a CSV file to begin Dynamic Panel analysis.")
 
         elif page == "Endogeneity & Instruments":
             fe_res = run_fe(df, y_var, x_vars)
