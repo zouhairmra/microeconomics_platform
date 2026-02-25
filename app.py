@@ -109,7 +109,7 @@ if page != "AI Assistant":
 # ==========================
 # AI ASSISTANT (Groq)
 # ==========================
-elif page == "AI Assistant":
+lif page == "AI Assistant":
 
     st.header("🤖 EconLab AI Assistant (Powered by Groq)")
 
@@ -122,16 +122,17 @@ elif page == "AI Assistant":
     from groq import Groq
     client = Groq(api_key=api_key)
 
-   MODEL = st.selectbox(
-    "Select Model",
-    [
-        "gpt-oss-120b",
-        "gpt-oss-20b",
-        "qwen-3-32b",
-        "kimi-k2",
-        "llama-3.3-70b"
-    ]
-)
+    MODEL = st.selectbox(
+        "Select Model",
+        [
+            "gpt-oss-120b",
+            "gpt-oss-20b",
+            "qwen-3-32b",
+            "kimi-k2",
+            "llama-3.3-70b"
+        ]
+    )
+
     if "messages" not in st.session_state:
         st.session_state.messages = []
 
@@ -139,34 +140,21 @@ elif page == "AI Assistant":
         with st.chat_message(msg["role"]):
             st.markdown(msg["content"])
 
-    user_input = st.chat_input("Ask an economics or econometrics question...")
+    user_input = st.chat_input("Ask an economics question...")
 
     if user_input:
         st.session_state.messages.append({"role": "user", "content": user_input})
 
         with st.chat_message("assistant"):
-            placeholder = st.empty()
-            full_response = ""
+            response = client.chat.completions.create(
+                model=MODEL,
+                messages=st.session_state.messages,
+                temperature=0.3
+            )
 
-            try:
-                response = client.chat.completions.create(
-                    model=MODEL,
-                    messages=st.session_state.messages,
-                    temperature=0.3
-                )
-
-                response_text = response.choices[0].message.content
-
-                for token in response_text.split():
-                    full_response += token + " "
-                    placeholder.markdown(full_response + "▌")
-
-                placeholder.markdown(full_response)
-
-            except Exception as e:
-                st.error(f"Groq API Error: {e}")
-                full_response = f"Error: {e}"
+            answer = response.choices[0].message.content
+            st.markdown(answer)
 
         st.session_state.messages.append(
-            {"role": "assistant", "content": full_response}
+            {"role": "assistant", "content": answer}
         )
