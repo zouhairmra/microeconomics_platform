@@ -113,7 +113,7 @@ elif page == "AI Assistant":
 
     st.header("🤖 EconLab AI Assistant")
 
-    POE_API_URL = "https://api.poe.com/v1/chat/completions"
+    POE_API_URL = "https://poe.com/api/keys"
     POE_API_KEY = st.secrets.get("POE_API_KEY", "")
 
     MODEL = st.selectbox("Select model", ["maztouriabot", "gpt-4o-mini", "claude-3-haiku"])
