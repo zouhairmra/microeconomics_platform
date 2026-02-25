@@ -10,4 +10,4 @@ matplotlib
 requests
 PyPDF2
 python-docx
-groc
+groq
