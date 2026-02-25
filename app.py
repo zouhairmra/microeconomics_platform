@@ -122,16 +122,7 @@ elif page == "AI Assistant":
     from groq import Groq
     client = Groq(api_key=api_key)
 
-    MODEL = st.selectbox(
-        "Select Model",
-        [
-            "gpt-oss-120b",
-            "gpt-oss-20b",
-            "qwen-3-32b",
-            "kimi-k2",
-            "llama-3.3-70b"
-        ]
-    )
+    MODEL = "gpt-oss-120b"
 
     if "messages" not in st.session_state:
         st.session_state.messages = []
@@ -146,11 +137,11 @@ elif page == "AI Assistant":
         st.session_state.messages.append({"role": "user", "content": user_input})
 
         with st.chat_message("assistant"):
-            response = client.chat.completions.create(
-                model=MODEL,
-                messages=st.session_state.messages,
-                temperature=0.3
-            )
+response = client.chat.completions.create(
+    model="gpt-oss-120b",
+    messages=st.session_state.messages,
+    temperature=0.3
+)
 
             answer = response.choices[0].message.content
             st.markdown(answer)
