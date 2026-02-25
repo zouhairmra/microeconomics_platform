@@ -122,15 +122,16 @@ elif page == "AI Assistant":
     from groq import Groq
     client = Groq(api_key=api_key)
 
-    MODEL = st.selectbox(
-        "Select Model",
-        [
-            "llama3-8b-8192",
-            "llama3-70b-8192",
-            "mixtral-8x7b-32768"
-        ]
-    )
-
+   MODEL = st.selectbox(
+    "Select Model",
+    [
+        "gpt-oss-120b",
+        "gpt-oss-20b",
+        "qwen-3-32b",
+        "kimi-k2",
+        "llama-3.3-70b"
+    ]
+)
     if "messages" not in st.session_state:
         st.session_state.messages = []
 
