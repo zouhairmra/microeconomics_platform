@@ -117,26 +117,44 @@ elif page == "AI Assistant":
     if not api_key:
         st.error("GROQ_API_KEY not found in Streamlit Secrets.")
         st.stop()
-from groq import Groq
 
-client = Groq()
-completion = client.chat.completions.create(
-    model="openai/gpt-oss-120b",
-    messages=[
-      {
-        "role": "user",
-        "content": ""
-      }
-    ],
-    temperature=1,
-    max_completion_tokens=8192,
-    top_p=1,
-    reasoning_effort="medium",
-    stream=True,
-    stop=None
-)
+    from groq import Groq
+    client = Groq(api_key=api_key)
+    MODEL = "openai/gpt-oss-120b"
 
-for chunk in completion:
-    print(chunk.choices[0].delta.content or "", end="")
+    # Initialize chat history in session state
+    if "messages" not in st.session_state:
+        st.session_state.messages = []
+
+    # Display previous messages
+    for msg in st.session_state.messages:
+        with st.chat_message(msg["role"]):
+            st.markdown(msg["content"])
+
+    # Get user input
+    user_input = st.chat_input("Ask an economics question...")
+
+    if user_input:
+        # Append user message
+        st.session_state.messages.append({"role": "user", "content": user_input})
+        with st.chat_message("user"):
+            st.markdown(user_input)
+
+        # Assistant response
+        with st.chat_message("assistant"):
+            try:
+                response = client.chat.completions.create(
+                    model=MODEL,
+                    messages=st.session_state.messages,
+                    temperature=0.3
+                )
+                answer = response.choices[0].message.content
+                st.markdown(answer)
+
+                # Save assistant response
+                st.session_state.messages.append({"role": "assistant", "content": answer})
+
+            except Exception as e:
+                st.error(f"Error contacting AI assistant: {e}")
 
     
