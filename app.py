@@ -109,7 +109,7 @@ if page != "AI Assistant":
 # ==========================
 # AI ASSISTANT (Groq)
 # ==========================
-lif page == "AI Assistant":
+elif page == "AI Assistant":
 
     st.header("🤖 EconLab AI Assistant (Powered by Groq)")
 
