@@ -107,11 +107,11 @@ if page != "AI Assistant":
         st.info("Upload a CSV file to begin analysis.")
 
 # ==========================
-# AI ASSISTANT (POE API)
+# AI ASSISTANT (Groq)
 # ==========================
 elif page == "AI Assistant":
 
-   st.header("🤖 EconLab AI Assistant (Powered by Groq)")
+    st.header("🤖 EconLab AI Assistant (Powered by Groq)")
 
     api_key = st.secrets.get("GROQ_API_KEY")
 
@@ -119,6 +119,7 @@ elif page == "AI Assistant":
         st.error("GROQ_API_KEY not found in Streamlit Secrets.")
         st.stop()
 
+    from groq import Groq
     client = Groq(api_key=api_key)
 
     MODEL = st.selectbox(
