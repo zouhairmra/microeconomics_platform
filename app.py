@@ -111,23 +111,24 @@ if page != "AI Assistant":
 # ==========================
 elif page == "AI Assistant":
 
-    st.header("🤖 EconLab AI Assistant")
+   st.header("🤖 EconLab AI Assistant (Powered by Groq)")
 
-    POE_API_URL = "https://api.poe.com/v1/chat/completions"
-    POE_API_KEY = st.secrets.get("POE_API_KEY", "")
+    api_key = st.secrets.get("GROQ_API_KEY")
 
-    MODEL = st.selectbox("Select model", ["maztouriabot", "gpt-4o-mini", "claude-3-haiku"])
+    if not api_key:
+        st.error("GROQ_API_KEY not found in Streamlit Secrets.")
+        st.stop()
 
-    uploaded_file = st.file_uploader("Upload PDF or CSV", type=["pdf", "csv"])
-    uploaded_text = ""
+    client = Groq(api_key=api_key)
 
-    if uploaded_file:
-        if uploaded_file.name.endswith(".csv"):
-            df_ai = pd.read_csv(uploaded_file)
-            st.dataframe(df_ai.head())
-            uploaded_text = df_ai.to_string(index=False)
-        else:
-            st.warning("PDF extraction requires PyPDF2 in requirements.")
+    MODEL = st.selectbox(
+        "Select Model",
+        [
+            "llama3-8b-8192",
+            "llama3-70b-8192",
+            "mixtral-8x7b-32768"
+        ]
+    )
 
     if "messages" not in st.session_state:
         st.session_state.messages = []
@@ -136,7 +137,7 @@ elif page == "AI Assistant":
         with st.chat_message(msg["role"]):
             st.markdown(msg["content"])
 
-    user_input = st.chat_input("Ask a question...")
+    user_input = st.chat_input("Ask an economics or econometrics question...")
 
     if user_input:
         st.session_state.messages.append({"role": "user", "content": user_input})
@@ -146,34 +147,24 @@ elif page == "AI Assistant":
             full_response = ""
 
             try:
-                headers = {
-                    "Authorization": f"Bearer {POE_API_KEY}",
-                    "Content-Type": "application/json"
-                }
-
-                content = (
-                    f"File content:\n{uploaded_text[:4000]}\n\nQuestion: {user_input}"
-                    if uploaded_text else user_input
+                response = client.chat.completions.create(
+                    model=MODEL,
+                    messages=st.session_state.messages,
+                    temperature=0.3
                 )
 
-                payload = {
-                    "model": MODEL,
-                    "messages": [{"role": "user", "content": content}]
-                }
-
-                res = requests.post(POE_API_URL, headers=headers, json=payload)
-                res.raise_for_status()
-                response_text = res.json()["choices"][0]["message"]["content"]
+                response_text = response.choices[0].message.content
 
                 for token in response_text.split():
                     full_response += token + " "
                     placeholder.markdown(full_response + "▌")
-                    time.sleep(0.02)
 
                 placeholder.markdown(full_response)
 
             except Exception as e:
-                st.error(f"API Error: {e}")
+                st.error(f"Groq API Error: {e}")
                 full_response = f"Error: {e}"
 
-        st.session_state.messages.append({"role": "assistant", "content": full_response})
+        st.session_state.messages.append(
+            {"role": "assistant", "content": full_response}
+        )
