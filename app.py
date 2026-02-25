@@ -137,8 +137,8 @@ elif page == "AI Assistant":
         st.session_state.messages.append({"role": "user", "content": user_input})
 
         with st.chat_message("assistant"):
-response = client.chat.completions.create(
-    model="gpt-oss-120b",
+    response = client.chat.completions.create(
+    model="groq/gpt-oss-120b",
     messages=st.session_state.messages,
     temperature=0.3
 )
