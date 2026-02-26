@@ -80,7 +80,7 @@ if page != "AI Assistant":
 
         entity = st.selectbox("Entity ID", df.columns)
         time_id = st.selectbox("Time ID", df.columns)
-
+df_panel = df.set_index([entity, time_id]).sort_index()
         y_var = st.selectbox("Dependent Variable", df.columns)
         x_vars = st.multiselect("Independent Variables", df.columns)
 
@@ -89,8 +89,8 @@ if page != "AI Assistant":
         # ==========================
         if page == "Panel Models" and y_var and x_vars:
 
-            fe_res = run_fe(df, y_var, x_vars)
-            re_res = run_re(df, y_var, x_vars)
+            fe_res = run_fe(df_panel, y_var, x_vars)
+            re_res = run_re(df_panel, y_var, x_vars)
             h_stat, h_p, h_interp = hausman(fe_res, re_res)
 
             st.subheader("Fixed Effects")
@@ -133,8 +133,8 @@ if page != "AI Assistant":
         # ==========================
         elif page == "Endogeneity & Instruments" and y_var and x_vars:
 
-            fe_res = run_fe(df, y_var, x_vars)
-            re_res = run_re(df, y_var, x_vars)
+           fe_res = run_fe(df_panel, y_var, x_vars)
+           re_res = run_re(df_panel, y_var, x_vars)
             h_stat, h_p, _ = hausman(fe_res, re_res)
 
             X = sm.add_constant(df[x_vars])
@@ -162,7 +162,7 @@ if page != "AI Assistant":
         # ==========================
         elif page == "Robustness & Sensitivity" and y_var and x_vars:
 
-            stability_df = sensitivity(df, y_var, x_vars)
+            stability_df = sensitivity(df_panel, y_var, x_vars)
             st.write(stability_df)
 
             interp = interpret_robustness(stability_df)
