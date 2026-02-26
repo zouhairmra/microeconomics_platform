@@ -18,6 +18,53 @@ from var_module import run_var, check_var_stability, interpret_irf, package_var_
 from endogeneity import endogeneity_score, interpret_endogeneity, package_endogeneity_results, suggest_instruments
 from diagnostics import heteroskedasticity, serial_corr
 
+
+# ==========================
+# PANEL PREPARATION HELPERS  ✅ NEW
+# ==========================
+def prepare_panel_df(df: pd.DataFrame, entity_col: str, time_col: str) -> pd.DataFrame:
+    """
+    Returns a copy of df indexed as a 2-level MultiIndex (entity, time),
+    cleaned, sorted, and de-duplicated (one row per entity-time).
+    This is required by linearmodels.PanelOLS (FE/RE).
+    """
+    d = df.copy()
+
+    # Standardize: strip spaces in entity (useful for country names)
+    d[entity_col] = d[entity_col].astype(str).str.strip()
+
+    # Convert time: try numeric first (works for "year"), else datetime
+    time_num = pd.to_numeric(d[time_col], errors="coerce")
+    if time_num.notna().mean() > 0.80:
+        d[time_col] = time_num.astype("Int64")
+    else:
+        d[time_col] = pd.to_datetime(d[time_col], errors="coerce")
+
+    # Drop rows with missing keys
+    d = d.dropna(subset=[entity_col, time_col])
+
+    # Set MultiIndex
+    d = d.set_index([entity_col, time_col]).sort_index()
+
+    # De-duplicate (PanelOLS expects one obs per entity-time)
+    if d.index.duplicated().any():
+        # Aggregate numeric columns only
+        d = d.groupby(level=[0, 1]).mean(numeric_only=True)
+
+    return d
+
+
+def safe_numeric_frame(df: pd.DataFrame, cols: list) -> pd.DataFrame:
+    """
+    Convert selected columns to numeric and drop missing values.
+    Useful for VIF and other diagnostics.
+    """
+    X = df[cols].copy()
+    for c in cols:
+        X[c] = pd.to_numeric(X[c], errors="coerce")
+    return X
+
+
 # ==========================
 # AI INTERPRETER FUNCTION
 # ==========================
@@ -78,19 +125,28 @@ if page != "AI Assistant":
 
         st.write("Columns detected:", df.columns.tolist())
 
-        entity = st.selectbox("Entity ID", df.columns)
-        time_id = st.selectbox("Time ID", df.columns)
+        entity = st.selectbox("Entity ID", df.columns, index=df.columns.get_loc("country") if "country" in df.columns else 0)
+        time_id = st.selectbox("Time ID", df.columns, index=df.columns.get_loc("year") if "year" in df.columns else 0)
 
-        y_var = st.selectbox("Dependent Variable", df.columns)
-        x_vars = st.multiselect("Independent Variables", df.columns)
+        # Exclude entity/time from y/x choices (prevents accidental selection)
+        candidate_cols = [c for c in df.columns if c not in {entity, time_id}]
+
+        y_var = st.selectbox("Dependent Variable", candidate_cols)
+        x_vars = st.multiselect("Independent Variables", candidate_cols)
 
         # ==========================
         # PANEL MODELS
         # ==========================
         if page == "Panel Models" and y_var and x_vars:
 
-            fe_res = run_fe(df, y_var, x_vars)
-            re_res = run_re(df, y_var, x_vars)
+            # ✅ Prepare panel-indexed df for FE/RE
+            df_panel = prepare_panel_df(df, entity, time_id)
+
+            # Optional: show index sanity check
+            st.caption(f"Panel index ready: {df_panel.index.names} | levels={df_panel.index.nlevels}")
+
+            fe_res = run_fe(df_panel, y_var, x_vars)
+            re_res = run_re(df_panel, y_var, x_vars)
             h_stat, h_p, h_interp = hausman(fe_res, re_res)
 
             st.subheader("Fixed Effects")
@@ -102,7 +158,9 @@ if page != "AI Assistant":
             st.write("Hausman p-value:", h_p)
             st.info(h_interp)
 
-            vif_df = compute_vif(df, x_vars)
+            # VIF uses raw df (no need for MultiIndex), but ensure numeric
+            X_vif = safe_numeric_frame(df, x_vars).dropna()
+            vif_df = compute_vif(X_vif, x_vars)  # ✅ pass numeric-only frame
             st.subheader("VIF Diagnostics")
             st.write(vif_df)
 
@@ -116,6 +174,7 @@ if page != "AI Assistant":
         # ==========================
         elif page == "Dynamic Panel" and y_var and x_vars:
 
+            # Dynamic panel function likely expects columns, not MultiIndex
             ab_res = run_arellano_bond(df, entity, time_id, y_var, x_vars)
             st.subheader("Dynamic Panel Results")
             st.text(ab_res.summary)
@@ -133,13 +192,27 @@ if page != "AI Assistant":
         # ==========================
         elif page == "Endogeneity & Instruments" and y_var and x_vars:
 
-            fe_res = run_fe(df, y_var, x_vars)
-            re_res = run_re(df, y_var, x_vars)
+            # ✅ FE/RE require panel-indexed df
+            df_panel = prepare_panel_df(df, entity, time_id)
+
+            fe_res = run_fe(df_panel, y_var, x_vars)
+            re_res = run_re(df_panel, y_var, x_vars)
             h_stat, h_p, _ = hausman(fe_res, re_res)
 
-            X = sm.add_constant(df[x_vars])
-            vif_df = compute_vif(df, x_vars)
-            bp_p = heteroskedasticity(fe_res.resids, X)
+            # Build X consistent with FE residual index (use df_panel)
+            X = safe_numeric_frame(df_panel.reset_index(), x_vars)  # temp for numeric conversion
+            X = X.set_index(df_panel.index)  # align to panel index
+            X = sm.add_constant(X, has_constant="add").dropna()
+
+            # Align residuals with X
+            resid = pd.Series(fe_res.resids, index=df_panel.index)
+            common_idx = resid.index.intersection(X.index)
+            resid = resid.loc[common_idx]
+            X = X.loc[common_idx]
+
+            vif_df = compute_vif(safe_numeric_frame(df, x_vars).dropna(), x_vars)
+
+            bp_p = heteroskedasticity(resid, X)
 
             score, level, details = endogeneity_score(h_p, vif_df["VIF"].max(), bp_p)
 
