@@ -70,39 +70,27 @@ page = st.sidebar.selectbox(
 # ==========================
 if page != "AI Assistant":
 
-uploaded = st.file_uploader("Upload CSV Data", type="csv")
+    uploaded = st.file_uploader("Upload CSV Data", type="csv")
 
-if uploaded:
-    df = pd.read_csv(uploaded)
-    df.columns = df.columns.str.strip().str.lower()  # normalize headers
+    if uploaded:
+        df = pd.read_csv(uploaded)
+        df.columns = df.columns.str.strip().str.lower()
 
-    st.write("Columns detected in CSV:", df.columns.tolist())
+        st.write("Columns detected:", df.columns.tolist())
 
-    # Select entity and time columns
-    entity = st.selectbox("Entity ID", df.columns)
-    time_id = st.selectbox("Time ID", df.columns)
+        entity = st.selectbox("Entity ID", df.columns)
+        time_id = st.selectbox("Time ID", df.columns)
 
-    # Check if entity and time exist
-    if entity not in df.columns or time_id not in df.columns:
-        st.warning(f"Selected columns not found in data: {entity}, {time_id}")
-    else:
-        # Set MultiIndex for panel models
-        df_panel = df.set_index([entity, time_id]).sort_index()
-
-        # Select dependent and independent variables
         y_var = st.selectbox("Dependent Variable", df.columns)
         x_vars = st.multiselect("Independent Variables", df.columns)
-
-        if not y_var or not x_vars:
-            st.info("Please select dependent and independent variables.")
 
         # ==========================
         # PANEL MODELS
         # ==========================
         if page == "Panel Models" and y_var and x_vars:
 
-            fe_res = run_fe(df_panel, y_var, x_vars)
-            re_res = run_re(df_panel, y_var, x_vars)
+            fe_res = run_fe(df, y_var, x_vars)
+            re_res = run_re(df, y_var, x_vars)
             h_stat, h_p, h_interp = hausman(fe_res, re_res)
 
             st.subheader("Fixed Effects")
@@ -145,8 +133,8 @@ if uploaded:
         # ==========================
         elif page == "Endogeneity & Instruments" and y_var and x_vars:
 
-           fe_res = run_fe(df_panel, y_var, x_vars)
-           re_res = run_re(df_panel, y_var, x_vars)
+            fe_res = run_fe(df, y_var, x_vars)
+            re_res = run_re(df, y_var, x_vars)
             h_stat, h_p, _ = hausman(fe_res, re_res)
 
             X = sm.add_constant(df[x_vars])
@@ -174,7 +162,7 @@ if uploaded:
         # ==========================
         elif page == "Robustness & Sensitivity" and y_var and x_vars:
 
-            stability_df = sensitivity(df_panel, y_var, x_vars)
+            stability_df = sensitivity(df, y_var, x_vars)
             st.write(stability_df)
 
             interp = interpret_robustness(stability_df)
