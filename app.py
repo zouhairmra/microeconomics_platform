@@ -8,6 +8,7 @@ import statsmodels.api as sm
 import sys
 import os
 import json
+import io  # ✅ NEW: needed for reading bytes
 
 sys.path.insert(0, os.path.abspath("."))
 
@@ -18,6 +19,37 @@ from robustness import sensitivity, interpret_robustness, robustness_score, pack
 from var_module import run_var, check_var_stability, interpret_irf, package_var_results
 from endogeneity import endogeneity_score, interpret_endogeneity, package_endogeneity_results, suggest_instruments
 from diagnostics import heteroskedasticity, serial_corr
+
+
+# ==========================
+# ✅ DATA LOADING (Persistent across reruns + CSV/Excel)
+# ==========================
+@st.cache_data(show_spinner=False)
+def load_data_from_bytes(file_bytes: bytes, file_name: str, sheet_name: str | None = None) -> pd.DataFrame:
+    """
+    Load CSV/Excel from raw bytes (cached).
+    """
+    name = (file_name or "").lower()
+
+    if name.endswith(".csv"):
+        df = pd.read_csv(io.BytesIO(file_bytes))
+    elif name.endswith(".xlsx") or name.endswith(".xls"):
+        # For Streamlit Cloud, openpyxl is typically available; ensure it's in requirements.txt if needed
+        df = pd.read_excel(io.BytesIO(file_bytes), sheet_name=sheet_name, engine="openpyxl")
+    else:
+        raise ValueError("Unsupported file type. Please upload CSV or Excel (xlsx/xls).")
+
+    df.columns = df.columns.str.strip().str.lower()
+    return df
+
+
+def get_excel_sheet_names(file_bytes: bytes) -> list[str]:
+    """
+    Reads Excel file bytes and returns sheet names (not cached).
+    We keep it simple: pandas can read ExcelFile from bytes.
+    """
+    xls = pd.ExcelFile(io.BytesIO(file_bytes), engine="openpyxl")
+    return xls.sheet_names
 
 
 # ==========================
@@ -211,7 +243,7 @@ page = st.sidebar.selectbox(
     ]
 )
 
-# Initialize AI defaults (so module buttons can reuse them even outside AI Assistant)
+# Initialize AI defaults
 if "ai_mode" not in st.session_state:
     st.session_state["ai_mode"] = "Referee Report"
 if "ai_audience" not in st.session_state:
@@ -225,265 +257,300 @@ if "ai_temp" not in st.session_state:
 # ==========================
 if page != "AI Assistant":
 
-    uploaded = st.file_uploader("Upload CSV Data", type="csv")
+    st.subheader("📁 Data Upload (CSV / Excel)")
+    uploaded = st.file_uploader(
+        "Upload a CSV or Excel file",
+        type=["csv", "xlsx", "xls"],
+        key="data_uploader"
+    )
 
-    if uploaded:
-        df = pd.read_csv(uploaded)
-        df.columns = df.columns.str.strip().str.lower()
+    # ✅ Persist file bytes in session_state
+    if uploaded is not None:
+        st.session_state["data_file_name"] = uploaded.name
+        st.session_state["data_file_bytes"] = uploaded.getvalue()
 
-        st.write("Columns detected:", df.columns.tolist())
+        # If switching file types, reset excel sheet selection
+        st.session_state.pop("excel_sheet", None)
 
-        entity = st.selectbox("Entity ID", df.columns,
-                              index=df.columns.get_loc("country") if "country" in df.columns else 0)
-        time_id = st.selectbox("Time ID", df.columns,
-                               index=df.columns.get_loc("year") if "year" in df.columns else 0)
+    # Provide a clear button (helps a lot on Streamlit Cloud)
+    colA, colB = st.columns([1, 3])
+    with colA:
+        if st.button("🗑️ Clear uploaded data"):
+            st.session_state.pop("data_file_name", None)
+            st.session_state.pop("data_file_bytes", None)
+            st.session_state.pop("excel_sheet", None)
+            st.cache_data.clear()
+            st.rerun()
 
-        # Exclude entity/time from y/x selection
-        candidate_cols = [c for c in df.columns if c not in {entity, time_id}]
-        y_var = st.selectbox("Dependent Variable", candidate_cols)
-        x_vars = st.multiselect("Independent Variables", candidate_cols)
+    # ✅ Load from session_state if available
+    if "data_file_bytes" not in st.session_state:
+        st.info("Upload a CSV/Excel file to begin.")
+        st.stop()
 
-        # ==========================
-        # PANEL MODELS
-        # ==========================
-        if page == "Panel Models" and y_var and x_vars:
+    file_name = st.session_state.get("data_file_name", "")
+    file_bytes = st.session_state["data_file_bytes"]
 
-            df_panel = prepare_panel_df(df, entity, time_id)
-            st.caption(f"Panel index ready: {df_panel.index.names} | levels={df_panel.index.nlevels}")
+    # ✅ Excel sheet selector (only when Excel)
+    sheet = None
+    if file_name.lower().endswith((".xlsx", ".xls")):
+        sheets = get_excel_sheet_names(file_bytes)
+        default_sheet = st.session_state.get("excel_sheet", sheets[0] if sheets else None)
+        sheet = st.selectbox("Select sheet", sheets, index=sheets.index(default_sheet) if default_sheet in sheets else 0)
+        st.session_state["excel_sheet"] = sheet
 
-            fe_res = run_fe(df_panel, y_var, x_vars)
-            re_res = run_re(df_panel, y_var, x_vars)
-            h_stat, h_p, h_interp = hausman(fe_res, re_res)
+    # ✅ Load dataframe (cached)
+    df = load_data_from_bytes(file_bytes, file_name, sheet_name=sheet)
 
-            st.subheader("Fixed Effects")
-            st.text(fe_res.summary)
+    st.success(f"Loaded: {file_name} | rows={len(df):,} cols={df.shape[1]}")
+    st.write("Columns detected:", df.columns.tolist())
 
-            st.subheader("Random Effects")
-            st.text(re_res.summary)
+    # Choose entity/time (defaults if exist)
+    entity = st.selectbox("Entity ID", df.columns,
+                          index=df.columns.get_loc("country") if "country" in df.columns else 0)
+    time_id = st.selectbox("Time ID", df.columns,
+                           index=df.columns.get_loc("year") if "year" in df.columns else 0)
 
-            st.write("Hausman p-value:", h_p)
-            st.info(h_interp)
+    # Exclude entity/time from y/x selection
+    candidate_cols = [c for c in df.columns if c not in {entity, time_id}]
+    y_var = st.selectbox("Dependent Variable", candidate_cols)
+    x_vars = st.multiselect("Independent Variables", candidate_cols)
 
-            X_vif = safe_numeric_frame(df, x_vars).dropna()
-            vif_df = compute_vif(X_vif, x_vars)
-            st.subheader("VIF Diagnostics")
-            st.write(vif_df)
+    # ==========================
+    # PANEL MODELS
+    # ==========================
+    if page == "Panel Models" and y_var and x_vars:
 
-            # (4) Improved AI interpretation button
-            if st.button("AI Interpretation (Panel Model)"):
-                summary = package_panel_results(fe_res, re_res, h_stat, h_p, h_interp)
+        df_panel = prepare_panel_df(df, entity, time_id)
+        st.caption(f"Panel index ready: {df_panel.index.names} | levels={df_panel.index.nlevels}")
 
-                ctx = build_econ_context(
-                    df=df,
-                    module_name="Panel Models (FE/RE + Hausman)",
-                    entity=entity, time_id=time_id,
-                    y_var=y_var, x_vars=x_vars,
-                    notes={
-                        "hausman_p": float(h_p) if h_p is not None else None,
-                        "fe_packet": compact_results_packet(fe_res, "FE"),
-                        "re_packet": compact_results_packet(re_res, "RE"),
-                        "se_note": "FE: robust/clustered depends on panel_models.py; RE: default unless specified"
-                    }
-                )
+        fe_res = run_fe(df_panel, y_var, x_vars)
+        re_res = run_re(df_panel, y_var, x_vars)
+        h_stat, h_p, h_interp = hausman(fe_res, re_res)
 
-                store_last_run("Panel Models", entity, time_id, y_var, x_vars, summary, extra=ctx["notes"])
+        st.subheader("Fixed Effects")
+        st.text(fe_res.summary)
 
-                interpretation = ai_interpret(
-                    results_text=summary,
-                    context_dict=ctx,
-                    mode=st.session_state["ai_mode"],
-                    audience=st.session_state["ai_audience"],
-                    temperature=st.session_state["ai_temp"]
-                )
-                st.markdown(interpretation)
+        st.subheader("Random Effects")
+        st.text(re_res.summary)
 
-        # ==========================
-        # DYNAMIC PANEL
-        # ==========================
-        elif page == "Dynamic Panel" and y_var and x_vars:
+        st.write("Hausman p-value:", h_p)
+        st.info(h_interp)
 
-            ab_res = run_arellano_bond(df, entity, time_id, y_var, x_vars)
+        X_vif = safe_numeric_frame(df, x_vars).dropna()
+        vif_df = compute_vif(X_vif, x_vars)
+        st.subheader("VIF Diagnostics")
+        st.write(vif_df)
 
-            st.subheader("Dynamic Panel Results")
-            st.text(ab_res.summary)
+        if st.button("AI Interpretation (Panel Model)"):
+            summary = package_panel_results(fe_res, re_res, h_stat, h_p, h_interp)
 
-            dyn_interp = interpret_dynamic_results(ab_res)
-            st.info(dyn_interp)
+            ctx = build_econ_context(
+                df=df,
+                module_name="Panel Models (FE/RE + Hausman)",
+                entity=entity, time_id=time_id,
+                y_var=y_var, x_vars=x_vars,
+                notes={
+                    "hausman_p": float(h_p) if h_p is not None else None,
+                    "fe_packet": compact_results_packet(fe_res, "FE"),
+                    "re_packet": compact_results_packet(re_res, "RE")
+                }
+            )
 
-            if st.button("AI Interpretation (Dynamic Panel)"):
-                summary = package_dynamic_results(ab_res)
+            store_last_run("Panel Models", entity, time_id, y_var, x_vars, summary, extra=ctx["notes"])
 
-                ctx = build_econ_context(
-                    df=df,
-                    module_name="Dynamic Panel (Arellano–Bond)",
-                    entity=entity, time_id=time_id,
-                    y_var=y_var, x_vars=x_vars,
-                    notes={
-                        "ab_packet": compact_results_packet(ab_res, "Arellano–Bond"),
-                        "reminder": "Check AR(2) and Hansen/Sargan; watch instrument proliferation."
-                    }
-                )
+            interpretation = ai_interpret(
+                results_text=summary,
+                context_dict=ctx,
+                mode=st.session_state["ai_mode"],
+                audience=st.session_state["ai_audience"],
+                temperature=st.session_state["ai_temp"]
+            )
+            st.markdown(interpretation)
 
-                store_last_run("Dynamic Panel", entity, time_id, y_var, x_vars, summary, extra=ctx["notes"])
+    # ==========================
+    # DYNAMIC PANEL
+    # ==========================
+    elif page == "Dynamic Panel" and y_var and x_vars:
 
-                interpretation = ai_interpret(
-                    results_text=summary,
-                    context_dict=ctx,
-                    mode=st.session_state["ai_mode"],
-                    audience=st.session_state["ai_audience"],
-                    temperature=st.session_state["ai_temp"]
-                )
-                st.markdown(interpretation)
+        ab_res = run_arellano_bond(df, entity, time_id, y_var, x_vars)
 
-        # ==========================
-        # ENDOGENEITY
-        # ==========================
-        elif page == "Endogeneity & Instruments" and y_var and x_vars:
+        st.subheader("Dynamic Panel Results")
+        st.text(ab_res.summary)
 
-            df_panel = prepare_panel_df(df, entity, time_id)
+        dyn_interp = interpret_dynamic_results(ab_res)
+        st.info(dyn_interp)
 
-            fe_res = run_fe(df_panel, y_var, x_vars)
-            re_res = run_re(df_panel, y_var, x_vars)
-            h_stat, h_p, _ = hausman(fe_res, re_res)
+        if st.button("AI Interpretation (Dynamic Panel)"):
+            summary = package_dynamic_results(ab_res)
 
-            # Build X aligned with FE residual index
-            X = safe_numeric_frame(df_panel.reset_index(), x_vars)
-            X = X.set_index(df_panel.index)
-            X = sm.add_constant(X, has_constant="add").dropna()
+            ctx = build_econ_context(
+                df=df,
+                module_name="Dynamic Panel (Arellano–Bond)",
+                entity=entity, time_id=time_id,
+                y_var=y_var, x_vars=x_vars,
+                notes={
+                    "ab_packet": compact_results_packet(ab_res, "Arellano–Bond"),
+                    "reminder": "Check AR(2) and Hansen/Sargan; watch instrument proliferation."
+                }
+            )
 
-            resid = pd.Series(fe_res.resids, index=df_panel.index)
-            common_idx = resid.index.intersection(X.index)
-            resid = resid.loc[common_idx]
-            X = X.loc[common_idx]
+            store_last_run("Dynamic Panel", entity, time_id, y_var, x_vars, summary, extra=ctx["notes"])
 
-            vif_df = compute_vif(safe_numeric_frame(df, x_vars).dropna(), x_vars)
-            bp_p = heteroskedasticity(resid, X)
+            interpretation = ai_interpret(
+                results_text=summary,
+                context_dict=ctx,
+                mode=st.session_state["ai_mode"],
+                audience=st.session_state["ai_audience"],
+                temperature=st.session_state["ai_temp"]
+            )
+            st.markdown(interpretation)
 
-            score, level, details = endogeneity_score(h_p, vif_df["VIF"].max(), bp_p)
+    # ==========================
+    # ENDOGENEITY
+    # ==========================
+    elif page == "Endogeneity & Instruments" and y_var and x_vars:
 
-            st.write("Endogeneity Risk:", level)
-            st.write(details)
-            st.markdown(interpret_endogeneity(score, level))
+        df_panel = prepare_panel_df(df, entity, time_id)
 
-            if level.startswith("High"):
-                for var in x_vars:
-                    st.write(f"Instruments for {var}: {suggest_instruments(var)}")
+        fe_res = run_fe(df_panel, y_var, x_vars)
+        re_res = run_re(df_panel, y_var, x_vars)
+        h_stat, h_p, _ = hausman(fe_res, re_res)
 
-            if st.button("AI Interpretation (Endogeneity)"):
-                summary = package_endogeneity_results(score, level, details)
+        # Build X aligned with FE residual index
+        X = safe_numeric_frame(df_panel.reset_index(), x_vars)
+        X = X.set_index(df_panel.index)
+        X = sm.add_constant(X, has_constant="add").dropna()
 
-                ctx = build_econ_context(
-                    df=df,
-                    module_name="Endogeneity Diagnostics (Hausman + VIF + BP test)",
-                    entity=entity, time_id=time_id,
-                    y_var=y_var, x_vars=x_vars,
-                    notes={
-                        "hausman_p": float(h_p) if h_p is not None else None,
-                        "max_vif": float(vif_df["VIF"].max()) if "VIF" in vif_df else None,
-                        "bp_p": float(bp_p) if bp_p is not None else None,
-                        "risk_level": level
-                    }
-                )
+        resid = pd.Series(fe_res.resids, index=df_panel.index)
+        common_idx = resid.index.intersection(X.index)
+        resid = resid.loc[common_idx]
+        X = X.loc[common_idx]
 
-                store_last_run("Endogeneity & Instruments", entity, time_id, y_var, x_vars, summary, extra=ctx["notes"])
+        vif_df = compute_vif(safe_numeric_frame(df, x_vars).dropna(), x_vars)
+        bp_p = heteroskedasticity(resid, X)
 
-                interpretation = ai_interpret(
-                    results_text=summary,
-                    context_dict=ctx,
-                    mode=st.session_state["ai_mode"],
-                    audience=st.session_state["ai_audience"],
-                    temperature=st.session_state["ai_temp"]
-                )
-                st.markdown(interpretation)
+        score, level, details = endogeneity_score(h_p, vif_df["VIF"].max(), bp_p)
 
-        # ==========================
-        # ROBUSTNESS
-        # ==========================
-        elif page == "Robustness & Sensitivity" and y_var and x_vars:
+        st.write("Endogeneity Risk:", level)
+        st.write(details)
+        st.markdown(interpret_endogeneity(score, level))
 
-            stability_df = sensitivity(df, y_var, x_vars)
-            st.write(stability_df)
+        if level.startswith("High"):
+            for var in x_vars:
+                st.write(f"Instruments for {var}: {suggest_instruments(var)}")
 
-            interp = interpret_robustness(stability_df)
-            score = robustness_score(stability_df)
+        if st.button("AI Interpretation (Endogeneity)"):
+            summary = package_endogeneity_results(score, level, details)
 
-            st.info(interp)
-            st.write("Robustness Score (0-100):", score)
+            ctx = build_econ_context(
+                df=df,
+                module_name="Endogeneity Diagnostics (Hausman + VIF + BP test)",
+                entity=entity, time_id=time_id,
+                y_var=y_var, x_vars=x_vars,
+                notes={
+                    "hausman_p": float(h_p) if h_p is not None else None,
+                    "max_vif": float(vif_df["VIF"].max()) if "VIF" in vif_df else None,
+                    "bp_p": float(bp_p) if bp_p is not None else None,
+                    "risk_level": level
+                }
+            )
 
-            if st.button("AI Interpretation (Robustness)"):
-                summary = package_robustness_results(stability_df, interp, score)
+            store_last_run("Endogeneity & Instruments", entity, time_id, y_var, x_vars, summary, extra=ctx["notes"])
 
-                ctx = build_econ_context(
-                    df=df,
-                    module_name="Robustness & Sensitivity",
-                    entity=entity, time_id=time_id,
-                    y_var=y_var, x_vars=x_vars,
-                    notes={"robustness_score": float(score)}
-                )
+            interpretation = ai_interpret(
+                results_text=summary,
+                context_dict=ctx,
+                mode=st.session_state["ai_mode"],
+                audience=st.session_state["ai_audience"],
+                temperature=st.session_state["ai_temp"]
+            )
+            st.markdown(interpretation)
 
-                store_last_run("Robustness & Sensitivity", entity, time_id, y_var, x_vars, summary, extra=ctx["notes"])
+    # ==========================
+    # ROBUSTNESS
+    # ==========================
+    elif page == "Robustness & Sensitivity" and y_var and x_vars:
 
-                interpretation = ai_interpret(
-                    results_text=summary,
-                    context_dict=ctx,
-                    mode=st.session_state["ai_mode"],
-                    audience=st.session_state["ai_audience"],
-                    temperature=st.session_state["ai_temp"]
-                )
-                st.markdown(interpretation)
+        stability_df = sensitivity(df, y_var, x_vars)
+        st.write(stability_df)
 
-        # ==========================
-        # VAR
-        # ==========================
-        elif page == "VAR & IRF Analysis":
+        interp = interpret_robustness(stability_df)
+        score = robustness_score(stability_df)
 
-            df_macro = df.drop(columns=[entity, time_id], errors="ignore")
-            var_res, lag = run_var(df_macro)
+        st.info(interp)
+        st.write("Robustness Score (0-100):", score)
 
-            st.write("Selected Lag:", lag)
-            st.write(var_res.summary())
+        if st.button("AI Interpretation (Robustness)"):
+            summary = package_robustness_results(stability_df, interp, score)
 
-            stable, stability_interp = check_var_stability(var_res)
-            st.info(stability_interp)
+            ctx = build_econ_context(
+                df=df,
+                module_name="Robustness & Sensitivity",
+                entity=entity, time_id=time_id,
+                y_var=y_var, x_vars=x_vars,
+                notes={"robustness_score": float(score)}
+            )
 
-            try:
-                irf = var_res.irf(10)
-                fig = irf.plot(orth=False)
-                st.pyplot(fig)
-                irf_interp = interpret_irf(var_res)
-                st.info(irf_interp)
-            except:
-                st.info("IRF plotting unavailable.")
+            store_last_run("Robustness & Sensitivity", entity, time_id, y_var, x_vars, summary, extra=ctx["notes"])
 
-            if st.button("AI Interpretation (VAR)"):
-                summary = package_var_results(var_res, lag, stability_interp)
+            interpretation = ai_interpret(
+                results_text=summary,
+                context_dict=ctx,
+                mode=st.session_state["ai_mode"],
+                audience=st.session_state["ai_audience"],
+                temperature=st.session_state["ai_temp"]
+            )
+            st.markdown(interpretation)
 
-                ctx = build_econ_context(
-                    df=df_macro,
-                    module_name="VAR & IRF Analysis",
-                    entity=entity, time_id=time_id,
-                    y_var="(VAR system)",
-                    x_vars=list(df_macro.columns),
-                    notes={"selected_lag": int(lag), "stability": stability_interp}
-                )
+    # ==========================
+    # VAR
+    # ==========================
+    elif page == "VAR & IRF Analysis":
 
-                store_last_run("VAR & IRF Analysis", entity, time_id, "(VAR system)", list(df_macro.columns), summary, extra=ctx["notes"])
+        df_macro = df.drop(columns=[entity, time_id], errors="ignore")
+        var_res, lag = run_var(df_macro)
 
-                interpretation = ai_interpret(
-                    results_text=summary,
-                    context_dict=ctx,
-                    mode=st.session_state["ai_mode"],
-                    audience=st.session_state["ai_audience"],
-                    temperature=st.session_state["ai_temp"]
-                )
-                st.markdown(interpretation)
+        st.write("Selected Lag:", lag)
+        st.write(var_res.summary())
 
-    else:
-        st.info("Upload a CSV file to begin.")
+        stable, stability_interp = check_var_stability(var_res)
+        st.info(stability_interp)
+
+        try:
+            irf = var_res.irf(10)
+            fig = irf.plot(orth=False)
+            st.pyplot(fig)
+            irf_interp = interpret_irf(var_res)
+            st.info(irf_interp)
+        except Exception:
+            st.info("IRF plotting unavailable.")
+
+        if st.button("AI Interpretation (VAR)"):
+            summary = package_var_results(var_res, lag, stability_interp)
+
+            ctx = build_econ_context(
+                df=df_macro,
+                module_name="VAR & IRF Analysis",
+                entity=entity, time_id=time_id,
+                y_var="(VAR system)",
+                x_vars=list(df_macro.columns),
+                notes={"selected_lag": int(lag), "stability": stability_interp}
+            )
+
+            store_last_run("VAR & IRF Analysis", entity, time_id, "(VAR system)", list(df_macro.columns), summary, extra=ctx["notes"])
+
+            interpretation = ai_interpret(
+                results_text=summary,
+                context_dict=ctx,
+                mode=st.session_state["ai_mode"],
+                audience=st.session_state["ai_audience"],
+                temperature=st.session_state["ai_temp"]
+            )
+            st.markdown(interpretation)
 
 
 # ==========================
-# (5)(6) AI ASSISTANT: Econometrics Copilot + Research Design Expander
+# AI ASSISTANT: Econometrics Copilot + Research Design Expander
 # ==========================
 elif page == "AI Assistant":
 
@@ -494,16 +561,12 @@ elif page == "AI Assistant":
     st.session_state["ai_mode"] = st.sidebar.selectbox(
         "AI Mode",
         ["Referee Report", "Policy Memo", "Socratic Tutor", "Diagnostics Coach"],
-        index=["Referee Report", "Policy Memo", "Socratic Tutor", "Diagnostics Coach"].index(st.session_state["ai_mode"])
-        if st.session_state["ai_mode"] in ["Referee Report", "Policy Memo", "Socratic Tutor", "Diagnostics Coach"]
-        else 0
+        index=0
     )
     st.session_state["ai_audience"] = st.sidebar.selectbox(
         "Audience",
         ["Undergraduate", "Graduate", "Researcher", "Policy Maker"],
-        index=["Undergraduate", "Graduate", "Researcher", "Policy Maker"].index(st.session_state["ai_audience"])
-        if st.session_state["ai_audience"] in ["Undergraduate", "Graduate", "Researcher", "Policy Maker"]
-        else 1
+        index=1
     )
     st.session_state["ai_temp"] = st.sidebar.slider("Creativity (temperature)", 0.0, 1.0, float(st.session_state["ai_temp"]), 0.05)
 
@@ -523,7 +586,7 @@ elif page == "AI Assistant":
         ]
     )
 
-    # ---- (6) Research design expander (improves Socratic Tutor answers)
+    # ---- Research design expander
     design = {}
     with st.expander("Research Design (optional, improves AI answers)"):
         design["goal"] = st.text_input("Goal (causal? predictive? descriptive?)", "")
@@ -555,7 +618,6 @@ elif page == "AI Assistant":
         if st.button("Clear Chat"):
             st.session_state.messages = []
 
-    # show chat history
     for msg in st.session_state.messages:
         with st.chat_message(msg["role"]):
             st.markdown(msg["content"])
@@ -570,7 +632,6 @@ elif page == "AI Assistant":
         audience = st.session_state["ai_audience"]
         temp = st.session_state["ai_temp"]
 
-        # Inject last run context dynamically
         if last:
             last_context = {
                 "module": last["module"],
